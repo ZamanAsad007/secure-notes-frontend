@@ -5,7 +5,7 @@ A modern, responsive Single Page Application (SPA) designed to Google Stitch Mat
 - **GitHub Repository**: [https://github.com/ZamanAsad007/secure-notes-frontend](https://github.com/ZamanAsad007/secure-notes-frontend)
 - **Live Frontend Application**: `https://YOUR-APP.vercel.app` (Vercel)
 - **Backend API Repository**: [https://github.com/ZamanAsad007/secure-notes-backend](https://github.com/ZamanAsad007/secure-notes-backend)
-- **Live Backend API**: `https://YOUR-API.onrender.com` (Render Web Service)
+- **Live Backend API**: [https://secure-notes-backend-d423.onrender.com](https://secure-notes-backend-d423.onrender.com) (Render Web Service)
 
 ---
 
@@ -36,7 +36,7 @@ A modern, responsive Single Page Application (SPA) designed to Google Stitch Mat
 Create a `.env` file in the frontend root:
 
 ```env
-VITE_API_URL=https://YOUR-API.onrender.com/api
+VITE_API_URL=https://secure-notes-backend-d423.onrender.com/api
 ```
 
 | Variable | Required | Default | Description |
@@ -95,6 +95,6 @@ Use these credentials to log in (or click the quick-fill buttons on the SignIn p
 2. Select Framework Preset: **Vite**.
 3. In **Environment Variables**, set:
    ```
-   VITE_API_URL=https://<your-render-service>.onrender.com/api
+   VITE_API_URL=https://secure-notes-backend-d423.onrender.com/api
    ```
 4. Deploy! `vercel.json` is preconfigured to route all SPA URL paths to `index.html`.

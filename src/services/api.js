@@ -44,7 +44,11 @@ export const clearToken = () => {
  */
 export const buildApiUrl = (endpoint) => {
   const envUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
-  const base = envUrl || '/api';
+  const base =
+    envUrl ||
+    (import.meta.env.PROD
+      ? 'https://secure-notes-backend-d423.onrender.com/api'
+      : '/api');
 
   // Normalize endpoint: ensure it starts with /
   const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
