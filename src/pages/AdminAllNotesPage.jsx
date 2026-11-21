@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,41 +10,55 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
   const [pagination, setPagination] = useState({ page: 1, limit: 9, total: 0, totalPages: 1 });
   const [ownerFilter, setOwnerFilter] = useState('');
   const [inputOwner, setInputOwner] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Inspection modal
   const [inspectedNote, setInspectedNote] = useState(null);
 
-  const fetchAllNotes = async (page = 1, owner = ownerFilter) => {
+  const refetch = useCallback(() => {
     setLoading(true);
-    try {
-      let url = `/api/notes?page=${page}&limit=${pagination.limit}`;
-      if (owner.trim()) {
-        url += `&owner=${encodeURIComponent(owner.trim())}`;
-      }
-      const res = await api(url);
-      setNotes(res.data || []);
-      setPagination(res.pagination || { page: 1, limit: pagination.limit, total: 0, totalPages: 1 });
-    } catch (err) {
-      showStatus(err.message, true);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
-    fetchAllNotes(pagination.page, ownerFilter);
-  }, [pagination.page, ownerFilter]);
+    let active = true;
+    (async () => {
+      try {
+        let url = `/api/notes?page=${pagination.page}&limit=${pagination.limit}`;
+        if (ownerFilter.trim()) {
+          url += `&owner=${encodeURIComponent(ownerFilter.trim())}`;
+        }
+        const res = await api(url);
+        if (active) {
+          setNotes(res.data || []);
+          setPagination(res.pagination || { page: 1, limit: pagination.limit, total: 0, totalPages: 1 });
+        }
+      } catch (err) {
+        if (active) showStatus(err.message, true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [pagination.page, pagination.limit, ownerFilter, refreshKey, showStatus]);
 
   const handleFilterSubmit = (e) => {
     e.preventDefault();
+    setLoading(true);
     setOwnerFilter(inputOwner.trim());
     setPagination((prev) => ({ ...prev, page: 1 }));
+    refetch();
   };
 
   const handleClearFilter = () => {
     setInputOwner('');
+    setLoading(true);
     setOwnerFilter('');
     setPagination((prev) => ({ ...prev, page: 1 }));
+    refetch();
   };
 
   return (
@@ -93,7 +107,7 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
             <div className="flex items-center gap-2">
               <button
                 type="submit"
-                className="h-10 px-5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium flex items-center gap-1.5 shadow-sm hover:opacity-90 active:scale-95 transition-all whitespace-nowrap"
+                className="h-10 px-5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium flex items-center gap-1.5 shadow-sm hover:opacity-90 active:scale-95 transition-all whitespace-nowrap cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px]">search</span>
                 <span>Filter by Owner</span>
@@ -103,7 +117,7 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
                 <button
                   type="button"
                   onClick={handleClearFilter}
-                  className="h-10 px-3.5 rounded-full bg-[var(--card-low)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] hover:bg-[var(--card-border)] transition-colors flex items-center gap-1"
+                  className="h-10 px-3.5 rounded-full bg-[var(--card-low)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] hover:bg-[var(--card-border)] transition-colors flex items-center gap-1 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">close</span>
                   <span>Clear</span>
@@ -193,17 +207,23 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setPagination((prev) => ({ ...prev, page: prev.page - 1 }))}
+                  onClick={() => {
+                    setLoading(true);
+                    setPagination((prev) => ({ ...prev, page: prev.page - 1 }));
+                  }}
                   disabled={pagination.page <= 1}
-                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors cursor-pointer"
                 >
                   Previous
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
+                  onClick={() => {
+                    setLoading(true);
+                    setPagination((prev) => ({ ...prev, page: prev.page + 1 }));
+                  }}
                   disabled={pagination.page >= pagination.totalPages}
-                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors cursor-pointer"
                 >
                   Next
                 </button>
@@ -228,7 +248,7 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
               <button
                 type="button"
                 onClick={() => setInspectedNote(null)}
-                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
@@ -274,15 +294,16 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
                   type="button"
                   onClick={() => {
                     const ownerId = typeof inspectedNote.owner === 'object' ? inspectedNote.owner._id : inspectedNote.owner;
+                    const ownerName = typeof inspectedNote.owner === 'object' ? inspectedNote.owner.name : undefined;
                     setInspectedNote(null);
-                    onNavigateToPosts(ownerId);
+                    onNavigateToPosts(ownerId, ownerName);
                   }}
                   className="px-4 py-2 rounded-full bg-[var(--card-low)] hover:bg-[var(--card-border)] text-xs text-[var(--text-color)] font-medium flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">forum</span>
                   <span>View Author Posts</span>
                 </button>
-              ) : <div></div>}
+              ) : <div />}
               <button
                 type="button"
                 onClick={() => setInspectedNote(null)}

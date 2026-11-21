@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { api, getToken, setToken, clearToken, setAuthErrorCallback } from '../services/api';
 
 const AuthContext = createContext(null);
@@ -22,17 +22,17 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('secure_notes_theme', theme);
   }, [theme]);
 
-  const toggleTheme = () => {
+  const toggleTheme = useCallback(() => {
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
-  };
+  }, []);
 
-  const showStatus = (message, isError = false) => {
+  const showStatus = useCallback((message, isError = false) => {
     setStatusMessage({ message, isError, id: Date.now() });
-  };
+  }, []);
 
-  const dismissStatus = () => {
+  const dismissStatus = useCallback(() => {
     setStatusMessage(null);
-  };
+  }, []);
 
   // Auto-restore session from /api/users/me
   useEffect(() => {
@@ -41,27 +41,32 @@ export const AuthProvider = ({ children }) => {
       showStatus(err, true);
     });
 
+    let active = true;
     const initAuth = async () => {
       const token = getToken();
       if (!token) {
-        setLoading(false);
+        if (active) setLoading(false);
         return;
       }
       try {
         const userData = await api('/api/users/me');
-        setUser(userData);
+        if (active) setUser(userData);
       } catch {
         clearToken();
-        setUser(null);
+        if (active) setUser(null);
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     initAuth();
-  }, []);
 
-  const login = async (email, password) => {
+    return () => {
+      active = false;
+    };
+  }, [showStatus]);
+
+  const login = useCallback(async (email, password) => {
     const data = await api('/api/auth/login', {
       method: 'POST',
       body: JSON.stringify({ email, password })
@@ -70,9 +75,9 @@ export const AuthProvider = ({ children }) => {
     setUser(data.user);
     showStatus(`Welcome back, ${data.user.name}!`);
     return data;
-  };
+  }, [showStatus]);
 
-  const register = async (name, email, password, interests = []) => {
+  const register = useCallback(async (name, email, password, interests = []) => {
     const data = await api('/api/auth/register', {
       method: 'POST',
       body: JSON.stringify({ name, email, password, interests })
@@ -81,17 +86,18 @@ export const AuthProvider = ({ children }) => {
     setUser(data.user);
     showStatus(`Account created successfully! Welcome, ${data.user.name}!`);
     return data;
-  };
+  }, [showStatus]);
 
-  const logout = () => {
+  const logout = useCallback(() => {
     clearToken();
     setUser(null);
     showStatus('Logged out successfully.');
-  };
+  }, [showStatus]);
 
-  const updateUser = (updatedUser) => {
+  const updateUser = useCallback((updatedUser) => {
+    if (!updatedUser) return;
     setUser((prev) => ({ ...prev, ...updatedUser }));
-  };
+  }, []);
 
   const value = {
     user,
@@ -112,6 +118,7 @@ export const AuthProvider = ({ children }) => {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
+// oxlint-disable-next-line react/only-export-components
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {

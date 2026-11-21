@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -10,44 +10,60 @@ export const AdminInterestsPage = ({ onNavigateToPosts }) => {
   const [pagination, setPagination] = useState({ page: 1, limit: 6, total: 0, totalPages: 1 });
   const [filterQuery, setFilterQuery] = useState('');
   const [appliedFilter, setAppliedFilter] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const fetchInterests = async (page = 1, interest = appliedFilter) => {
+  const refetch = useCallback(() => {
     setLoading(true);
-    try {
-      let url = `/api/users/by-interests?page=${page}&limit=${pagination.limit}`;
-      if (interest.trim()) {
-        url += `&interest=${encodeURIComponent(interest.trim())}`;
-      }
-      const res = await api(url);
-      setInterestGroups(res.data || []);
-      setPagination(res.pagination || { page: 1, limit: pagination.limit, total: 0, totalPages: 1 });
-    } catch (err) {
-      showStatus(err.message, true);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
-    fetchInterests(pagination.page, appliedFilter);
-  }, [pagination.page, appliedFilter]);
+    let active = true;
+    (async () => {
+      try {
+        let url = `/api/users/by-interests?page=${pagination.page}&limit=${pagination.limit}`;
+        if (appliedFilter.trim()) {
+          url += `&interest=${encodeURIComponent(appliedFilter.trim())}`;
+        }
+        const res = await api(url);
+        if (active) {
+          setInterestGroups(res.data || []);
+          setPagination(res.pagination || { page: 1, limit: pagination.limit, total: 0, totalPages: 1 });
+        }
+      } catch (err) {
+        if (active) showStatus(err.message, true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [pagination.page, pagination.limit, appliedFilter, refreshKey, showStatus]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
+    setLoading(true);
     setAppliedFilter(filterQuery.trim());
     setPagination((prev) => ({ ...prev, page: 1 }));
+    refetch();
   };
 
   const handleClear = () => {
     setFilterQuery('');
+    setLoading(true);
     setAppliedFilter('');
     setPagination((prev) => ({ ...prev, page: 1 }));
+    refetch();
   };
 
   const handleQuickSelect = (tag) => {
     setFilterQuery(tag);
+    setLoading(true);
     setAppliedFilter(tag);
     setPagination((prev) => ({ ...prev, page: 1 }));
+    refetch();
   };
 
   const quickTags = ['cryptography', 'security', 'databases', 'chess', 'reading', 'travel'];
@@ -104,7 +120,7 @@ export const AdminInterestsPage = ({ onNavigateToPosts }) => {
               <div className="flex items-center gap-2">
                 <button
                   type="submit"
-                  className="h-10 px-5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium flex items-center gap-1.5 shadow-sm hover:opacity-90 active:scale-95 transition-all whitespace-nowrap"
+                  className="h-10 px-5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium flex items-center gap-1.5 shadow-sm hover:opacity-90 active:scale-95 transition-all whitespace-nowrap cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">filter_list</span>
                   <span>Filter Interests</span>
@@ -114,7 +130,7 @@ export const AdminInterestsPage = ({ onNavigateToPosts }) => {
                   <button
                     type="button"
                     onClick={handleClear}
-                    className="h-10 px-3.5 rounded-full bg-[var(--card-low)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] hover:bg-[var(--card-border)] transition-colors flex items-center gap-1"
+                    className="h-10 px-3.5 rounded-full bg-[var(--card-low)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] hover:bg-[var(--card-border)] transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[16px]">close</span>
                     <span>Clear</span>
@@ -131,7 +147,7 @@ export const AdminInterestsPage = ({ onNavigateToPosts }) => {
                   key={tag}
                   type="button"
                   onClick={() => handleQuickSelect(tag)}
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-all ${
+                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-all cursor-pointer ${
                     appliedFilter === tag
                       ? 'bg-[var(--primary)] text-[var(--primary-text)]'
                       : 'bg-[var(--card-low)] text-[var(--text-muted)] hover:text-[var(--text-color)] hover:bg-[var(--card-border)]'
@@ -241,17 +257,23 @@ export const AdminInterestsPage = ({ onNavigateToPosts }) => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setPagination((prev) => ({ ...prev, page: prev.page - 1 }))}
+                  onClick={() => {
+                    setLoading(true);
+                    setPagination((prev) => ({ ...prev, page: prev.page - 1 }));
+                  }}
                   disabled={pagination.page <= 1}
-                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors cursor-pointer"
                 >
                   Previous
                 </button>
                 <button
                   type="button"
-                  onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
+                  onClick={() => {
+                    setLoading(true);
+                    setPagination((prev) => ({ ...prev, page: prev.page + 1 }));
+                  }}
                   disabled={pagination.page >= pagination.totalPages}
-                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[var(--card-low)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-border)] transition-colors cursor-pointer"
                 >
                   Next
                 </button>

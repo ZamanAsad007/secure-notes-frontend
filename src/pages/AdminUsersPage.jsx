@@ -1,15 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export const AdminUsersPage = ({ onNavigateToPosts }) => {
-  const { user: currentUser, showStatus } = useAuth();
+  const { user: currentUser, updateUser, showStatus } = useAuth();
 
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
   const [roleFilter, setRoleFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
 
   // Modals state
   const [addModalOpen, setAddModalOpen] = useState(false);
@@ -39,32 +40,45 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
   const [deletingUser, setDeletingUser] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchUsers = async (page = 1) => {
+  const refetch = useCallback(() => {
     setLoading(true);
-    try {
-      let url = `/api/users?page=${page}&limit=${pagination.limit}`;
-      if (roleFilter) {
-        url += `&role=${roleFilter}`;
-      }
-      const res = await api(url);
-      setUsers(res.data || []);
-      setPagination(res.pagination || { page: 1, limit: pagination.limit, total: 0, totalPages: 1 });
-    } catch (err) {
-      showStatus(err.message, true);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
-    fetchUsers(pagination.page);
-  }, [pagination.page, roleFilter]);
+    let active = true;
+    (async () => {
+      try {
+        let url = `/api/users?page=${pagination.page}&limit=${pagination.limit}`;
+        if (roleFilter) {
+          url += `&role=${roleFilter}`;
+        }
+        const res = await api(url);
+        if (active) {
+          setUsers(res.data || []);
+          setPagination(res.pagination || { page: 1, limit: pagination.limit, total: 0, totalPages: 1 });
+        }
+      } catch (err) {
+        if (active) showStatus(err.message, true);
+      } finally {
+        if (active) setLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [pagination.page, pagination.limit, roleFilter, refreshKey, showStatus]);
 
   // Handle Add User
   const handleAddSubmit = async (e) => {
     e.preventDefault();
     if (!addForm.name.trim() || !addForm.email.trim() || !addForm.password) {
       showStatus('Name, email, and password are required', true);
+      return;
+    }
+    if (addForm.password.length < 8) {
+      showStatus('Password must be at least 8 characters', true);
       return;
     }
 
@@ -89,7 +103,8 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
       showStatus(`User "${addForm.name}" created successfully`);
       setAddModalOpen(false);
       setAddForm({ name: '', email: '', password: '', role: 'user', interests: '' });
-      fetchUsers(1);
+      setPagination((prev) => ({ ...prev, page: 1 }));
+      refetch();
     } catch (err) {
       showStatus(err.message, true);
     } finally {
@@ -129,9 +144,18 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
         })
       });
 
+      // If editing current logged-in user, keep context in sync
+      if (selectedUser._id === currentUser?._id && updateUser) {
+        updateUser({
+          name: editForm.name.trim(),
+          role: editForm.role,
+          interests: interestsArray
+        });
+      }
+
       showStatus(`User updated successfully`);
       setEditModalOpen(false);
-      fetchUsers(pagination.page);
+      refetch();
     } catch (err) {
       showStatus(err.message, true);
     } finally {
@@ -160,7 +184,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
       showStatus(`User "${deletingUser.name}" and associated records deleted`);
       setDeleteModalOpen(false);
       setDeletingUser(null);
-      fetchUsers(pagination.page);
+      refetch();
     } catch (err) {
       showStatus(err.message, true);
     } finally {
@@ -168,8 +192,9 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
     }
   };
 
-  // Filter local display by search query if any
+  // Filter local display by roleFilter and search query
   const displayedUsers = users.filter((u) => {
+    if (roleFilter && u.role !== roleFilter) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -200,7 +225,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setAddModalOpen(true)}
-                className="h-10 px-5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-sm font-medium flex items-center gap-2 shadow-sm hover:opacity-90 active:scale-95 transition-all"
+                className="h-10 px-5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-sm font-medium flex items-center gap-2 shadow-sm hover:opacity-90 active:scale-95 transition-all cursor-pointer"
                 type="button"
               >
                 <span className="material-symbols-outlined text-[18px]">person_add</span>
@@ -229,9 +254,10 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--text-muted)] whitespace-nowrap">Role:</span>
               <select
-                className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-[var(--text-color)] text-xs focus:outline-none focus:border-[var(--primary)] transition-colors"
+                className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-[var(--text-color)] text-xs focus:outline-none focus:border-[var(--primary)] transition-colors cursor-pointer"
                 value={roleFilter}
                 onChange={(e) => {
+                  setLoading(true);
                   setRoleFilter(e.target.value);
                   setPagination((prev) => ({ ...prev, page: 1 }));
                 }}
@@ -342,7 +368,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
                               <button
                                 type="button"
                                 onClick={() => openEdit(u)}
-                                className="p-1.5 rounded-full hover:bg-[var(--card-low)] text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors"
+                                className="p-1.5 rounded-full hover:bg-[var(--card-low)] text-[var(--text-muted)] hover:text-[var(--text-color)] transition-colors cursor-pointer"
                                 title="Edit user"
                               >
                                 <span className="material-symbols-outlined text-[18px]">edit</span>
@@ -356,7 +382,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
                                 className={`p-1.5 rounded-full transition-colors ${
                                   isSelf
                                     ? 'text-[var(--text-muted)] opacity-30 cursor-not-allowed'
-                                    : 'hover:bg-[var(--error-bg)] text-[var(--text-muted)] hover:text-[var(--error)]'
+                                    : 'hover:bg-[var(--error-bg)] text-[var(--text-muted)] hover:text-[var(--error)] cursor-pointer'
                                 }`}
                                 title={isSelf ? 'Cannot delete self' : 'Delete user'}
                               >
@@ -380,17 +406,23 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => fetchUsers(pagination.page - 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setPagination((prev) => ({ ...prev, page: prev.page - 1 }));
+                  }}
                   disabled={pagination.page <= 1}
-                  className="px-3 py-1 rounded-lg bg-[var(--card-bg)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-low)] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[var(--card-bg)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-low)] transition-colors cursor-pointer"
                 >
                   Previous
                 </button>
                 <button
                   type="button"
-                  onClick={() => fetchUsers(pagination.page + 1)}
+                  onClick={() => {
+                    setLoading(true);
+                    setPagination((prev) => ({ ...prev, page: prev.page + 1 }));
+                  }}
                   disabled={pagination.page >= pagination.totalPages}
-                  className="px-3 py-1 rounded-lg bg-[var(--card-bg)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-low)] transition-colors"
+                  className="px-3 py-1 rounded-lg bg-[var(--card-bg)] text-xs text-[var(--text-color)] border border-[var(--card-border)] disabled:opacity-40 disabled:cursor-not-allowed hover:bg-[var(--card-low)] transition-colors cursor-pointer"
                 >
                   Next
                 </button>
@@ -412,7 +444,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
               <button
                 type="button"
                 onClick={() => setAddModalOpen(false)}
-                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
@@ -448,6 +480,8 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
                   className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-xs text-[var(--text-color)] focus:outline-none focus:border-[var(--primary)]"
                   placeholder="Min 8 characters..."
                   type="password"
+                  minLength={8}
+                  maxLength={72}
                   value={addForm.password}
                   onChange={(e) => setAddForm({ ...addForm, password: e.target.value })}
                   required
@@ -457,7 +491,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-[var(--text-color)] uppercase">Role</label>
                 <select
-                  className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-xs text-[var(--text-color)] focus:outline-none focus:border-[var(--primary)]"
+                  className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-xs text-[var(--text-color)] focus:outline-none focus:border-[var(--primary)] cursor-pointer"
                   value={addForm.role}
                   onChange={(e) => setAddForm({ ...addForm, role: e.target.value })}
                 >
@@ -482,14 +516,14 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
                 <button
                   type="button"
                   onClick={() => setAddModalOpen(false)}
-                  className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-low)]"
+                  className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-low)] cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addingUser}
-                  className="px-5 py-2 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium disabled:opacity-50"
+                  className="px-5 py-2 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium disabled:opacity-50 cursor-pointer"
                 >
                   {addingUser ? 'Creating...' : 'Create User'}
                 </button>
@@ -511,7 +545,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
               <button
                 type="button"
                 onClick={() => setEditModalOpen(false)}
-                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text-color)]"
+                className="p-1 rounded-full text-[var(--text-muted)] hover:text-[var(--text-color)] cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
@@ -531,7 +565,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
               <div className="flex flex-col gap-1">
                 <label className="text-xs font-semibold text-[var(--text-color)] uppercase">Role</label>
                 <select
-                  className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-xs text-[var(--text-color)] focus:outline-none focus:border-[var(--primary)]"
+                  className="h-10 px-3 rounded-lg bg-[var(--card-low)] border border-[var(--card-border)] text-xs text-[var(--text-color)] focus:outline-none focus:border-[var(--primary)] cursor-pointer"
                   value={editForm.role}
                   onChange={(e) => setEditForm({ ...editForm, role: e.target.value })}
                 >
@@ -555,14 +589,14 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
                 <button
                   type="button"
                   onClick={() => setEditModalOpen(false)}
-                  className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-low)]"
+                  className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-low)] cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={editingUser}
-                  className="px-5 py-2 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium disabled:opacity-50"
+                  className="px-5 py-2 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-medium disabled:opacity-50 cursor-pointer"
                 >
                   {editingUser ? 'Saving...' : 'Save Changes'}
                 </button>
@@ -594,7 +628,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
               <button
                 type="button"
                 onClick={() => setDeleteModalOpen(false)}
-                className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-low)]"
+                className="px-4 py-2 rounded-full text-xs font-medium text-[var(--text-muted)] hover:bg-[var(--card-low)] cursor-pointer"
               >
                 Cancel
               </button>
@@ -602,7 +636,7 @@ export const AdminUsersPage = ({ onNavigateToPosts }) => {
                 type="button"
                 onClick={handleDeleteConfirm}
                 disabled={isDeleting}
-                className="px-5 py-2 rounded-full bg-[var(--error)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50"
+                className="px-5 py-2 rounded-full bg-[var(--error)] text-white text-xs font-medium hover:opacity-90 disabled:opacity-50 cursor-pointer"
               >
                 {isDeleting ? 'Deleting...' : 'Delete Account'}
               </button>

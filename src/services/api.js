@@ -7,22 +7,65 @@ export const setAuthErrorCallback = (cb) => {
 };
 
 export const getToken = () => {
-  return sessionStorage.getItem(TOKEN_KEY);
+  try {
+    return sessionStorage.getItem(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 };
 
 export const setToken = (token) => {
-  if (token) {
-    sessionStorage.setItem(TOKEN_KEY, token);
-  } else {
-    sessionStorage.removeItem(TOKEN_KEY);
+  try {
+    if (token) {
+      sessionStorage.setItem(TOKEN_KEY, token);
+    } else {
+      sessionStorage.removeItem(TOKEN_KEY);
+    }
+  } catch {
+    // ignore storage restrictions
   }
 };
 
 export const clearToken = () => {
-  sessionStorage.removeItem(TOKEN_KEY);
+  try {
+    sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // ignore
+  }
 };
 
-const API_BASE = (import.meta.env.VITE_API_URL || '/api').replace(/\/+$/, '');
+/**
+ * Robust API base URL resolver.
+ * Handles:
+ *  - empty / undefined -> defaults to '/api'
+ *  - 'https://api.example.com' (without /api) -> appends '/api'
+ *  - 'https://api.example.com/api' (with /api) -> avoids duplicating '/api'
+ *  - '/api' -> proxies to local dev or root relative path
+ */
+export const buildApiUrl = (endpoint) => {
+  const envUrl = (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+  const base = envUrl || '/api';
+
+  // Normalize endpoint: ensure it starts with /
+  const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+  if (base.endsWith('/api')) {
+    // Base already includes '/api'
+    const pathWithoutApi = cleanEndpoint.startsWith('/api/')
+      ? cleanEndpoint.slice(4) // '/api/notes' -> '/notes'
+      : cleanEndpoint === '/api'
+      ? ''
+      : cleanEndpoint;
+    return `${base}${pathWithoutApi}`;
+  } else {
+    // Base does NOT end with '/api' (e.g. 'https://my-backend.onrender.com')
+    const pathWithApi =
+      cleanEndpoint.startsWith('/api/') || cleanEndpoint === '/api'
+        ? cleanEndpoint
+        : `/api${cleanEndpoint}`;
+    return `${base}${pathWithApi}`;
+  }
+};
 
 /**
  * Universal API fetch helper
@@ -38,33 +81,38 @@ export const api = async (endpoint, options = {}) => {
     headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // Normalize endpoint: handle '/api/...', '/...', or '...'
-  let cleanEndpoint = endpoint;
-  if (cleanEndpoint.startsWith('/api/')) {
-    cleanEndpoint = cleanEndpoint.slice(4);
-  } else if (cleanEndpoint === '/api') {
-    cleanEndpoint = '';
-  } else if (!cleanEndpoint.startsWith('/')) {
-    cleanEndpoint = `/${cleanEndpoint}`;
+  const url = buildApiUrl(endpoint);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      ...options,
+      headers
+    });
+  } catch (err) {
+    const networkError = new Error(
+      'Unable to connect to the server. Please check your internet connection or verify the backend service is running.'
+    );
+    networkError.originalError = err;
+    throw networkError;
   }
-
-  const url = `${API_BASE}${cleanEndpoint}`;
-
-  const response = await fetch(url, {
-    ...options,
-    headers
-  });
 
   let data = null;
   const contentType = response.headers.get('content-type');
   if (contentType && contentType.includes('application/json')) {
-    data = await response.json();
+    try {
+      data = await response.json();
+    } catch {
+      data = null;
+    }
   }
 
   if (!response.ok) {
     if (response.status === 401) {
       clearToken();
-      if (onAuthErrorCallback) {
+      const isAuthEndpoint =
+        endpoint.includes('/auth/login') || endpoint.includes('/auth/register');
+      if (onAuthErrorCallback && !isAuthEndpoint) {
         onAuthErrorCallback(data?.error || 'Session expired. Please log in again.');
       }
     }

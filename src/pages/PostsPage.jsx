@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
@@ -17,80 +17,103 @@ export const PostsPage = ({ initialAuthor }) => {
   const [currentPage, setCurrentPage] = useState(1);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [lookupError, setLookupError] = useState(null);
+  const [refreshPostsKey, setRefreshPostsKey] = useState(0);
+
+  // Sync internal targetUserId if initialAuthor changes
+  const [prevAuthor, setPrevAuthor] = useState(initialAuthor);
+  if (initialAuthor !== prevAuthor) {
+    setPrevAuthor(initialAuthor);
+    if (initialAuthor?.id) {
+      setTargetUserId(initialAuthor.id);
+      setInputQuery(initialAuthor.name || initialAuthor.id);
+      setCurrentPage(1);
+    }
+  }
 
   // Authors list for quick selection
   const [authors, setAuthors] = useState([]);
   const [loadingAuthors, setLoadingAuthors] = useState(false);
 
-  const fetchAuthors = async () => {
-    setLoadingAuthors(true);
-    try {
-      const res = await api('/api/posts/authors');
-      if (Array.isArray(res.data) && res.data.length > 0) {
-        setAuthors(res.data);
+  // Fetch authors on mount
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      setLoadingAuthors(true);
+      try {
+        const res = await api('/api/posts/authors');
+        if (active && Array.isArray(res.data)) {
+          setAuthors(res.data);
+        }
+      } catch {
+        // Fallback: If authors endpoint fails and user is admin, try /api/users
+        if (user?.role === 'admin') {
+          try {
+            const uRes = await api('/api/users?limit=8');
+            if (active && uRes.data) setAuthors(uRes.data);
+          } catch {
+            // ignore
+          }
+        }
+      } finally {
+        if (active) setLoadingAuthors(false);
       }
-    } catch {
-      // Fallback: If authors endpoint fails, try /api/users
-      api('/api/users?limit=8')
-        .then((uRes) => {
-          if (uRes.data) setAuthors(uRes.data);
-        })
-        .catch(() => {});
-    } finally {
-      setLoadingAuthors(false);
-    }
-  };
+    })();
 
-  useEffect(() => {
-    fetchAuthors();
-  }, []);
-
-  // Update selection whenever initialAuthor changes or on first user load
-  useEffect(() => {
-    if (initialAuthor?.id) {
-      setTargetUserId(initialAuthor.id);
-      setInputQuery(initialAuthor.name || initialAuthor.id);
-    } else if (user?._id && !targetUserId) {
-      setTargetUserId(user._id);
-      setInputQuery(user.name || user._id);
-    }
-  }, [initialAuthor, user]);
+    return () => {
+      active = false;
+    };
+  }, [user?.role]);
 
   // Load posts for target user (by ObjectId, email, or name)
-  const fetchUserPosts = async (identifier, page = 1) => {
-    if (!identifier) return;
+  const refetchPosts = useCallback(() => {
     setLoadingPosts(true);
-    setLookupError(null);
-    try {
-      const res = await api(`/api/users/${encodeURIComponent(identifier)}/posts?page=${page}&limit=5`);
-      setPostsData(res);
-      setCurrentPage(page);
-    } catch (err) {
-      setLookupError(err.message || 'User not found or unable to fetch posts');
-      setPostsData(null);
-    } finally {
-      setLoadingPosts(false);
-    }
-  };
+    setRefreshPostsKey((k) => k + 1);
+  }, []);
 
   useEffect(() => {
-    if (targetUserId) {
-      fetchUserPosts(targetUserId, 1);
-    }
-  }, [targetUserId]);
+    if (!targetUserId) return;
+
+    let active = true;
+    (async () => {
+      setLookupError(null);
+      try {
+        const res = await api(`/api/users/${encodeURIComponent(targetUserId)}/posts?page=${currentPage}&limit=5`);
+        if (active) {
+          setPostsData(res);
+        }
+      } catch (err) {
+        if (active) {
+          setLookupError(err.message || 'User not found or unable to fetch posts');
+          setPostsData(null);
+        }
+      } finally {
+        if (active) setLoadingPosts(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [targetUserId, currentPage, refreshPostsKey]);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
-    if (!inputQuery.trim()) {
+    const query = inputQuery.trim();
+    if (!query) {
       showStatus('Please enter an author name, email, or user ID', true);
       return;
     }
-    setTargetUserId(inputQuery.trim());
+    setLoadingPosts(true);
+    setTargetUserId(query);
+    setCurrentPage(1);
+    refetchPosts();
   };
 
   const selectAuthor = (author) => {
     setInputQuery(author.name || author._id);
+    setLoadingPosts(true);
     setTargetUserId(author._id);
+    setCurrentPage(1);
   };
 
   const handlePublish = async (e) => {
@@ -114,9 +137,12 @@ export const PostsPage = ({ initialAuthor }) => {
       setPostContent('');
 
       // Refresh authors list and active author feed
-      fetchAuthors();
-      if (targetUserId === user?._id || targetUserId === user?.name) {
-        fetchUserPosts(user._id, 1);
+      refetchPosts();
+      try {
+        const authorsRes = await api('/api/posts/authors');
+        if (Array.isArray(authorsRes.data)) setAuthors(authorsRes.data);
+      } catch {
+        // ignore
       }
     } catch (err) {
       showStatus(err.message, true);
@@ -291,7 +317,9 @@ export const PostsPage = ({ initialAuthor }) => {
                     <button
                       onClick={() => {
                         setInputQuery(user.name || user._id);
+                        setLoadingPosts(true);
                         setTargetUserId(user._id);
+                        setCurrentPage(1);
                       }}
                       className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[var(--primary-light)] text-[var(--primary-light-text)] hover:opacity-90 transition-all self-start cursor-pointer flex items-center gap-1"
                       type="button"
@@ -302,7 +330,7 @@ export const PostsPage = ({ initialAuthor }) => {
                   )}
                 </div>
 
-                {/* Active Authors Quick-Select Chips (Available to ALL users) */}
+                {/* Active Authors Quick-Select Chips */}
                 <div className="flex flex-col gap-2 pt-1">
                   <div className="flex items-center justify-between text-xs text-[var(--text-muted)]">
                     <span className="font-semibold uppercase tracking-wider text-[11px]">
@@ -355,7 +383,7 @@ export const PostsPage = ({ initialAuthor }) => {
                   </div>
                 </div>
 
-                {/* Search Form Row (Search by Name, Email, or User ID) */}
+                {/* Search Form Row */}
                 <form className="flex flex-col gap-1.5 pt-2" onSubmit={handleSearchSubmit}>
                   <label className="text-xs font-semibold text-[var(--text-color)] uppercase tracking-wider" htmlFor="userIdInput">
                     Search Author by Name, Email, or ID
@@ -492,10 +520,13 @@ export const PostsPage = ({ initialAuthor }) => {
                       </article>
                     ))}
 
-                    {/* Scenario 2 Pagination (hasMore mode: no total count) */}
+                    {/* Scenario 2 Pagination */}
                     <div className="flex items-center justify-between pt-2 bg-[var(--card-low)] px-4 py-2.5 rounded-xl border border-[var(--card-border)]">
                       <button
-                        onClick={() => fetchUserPosts(targetUserId, currentPage - 1)}
+                        onClick={() => {
+                          setLoadingPosts(true);
+                          setCurrentPage((p) => p - 1);
+                        }}
                         disabled={currentPage <= 1}
                         className="px-3.5 py-1.5 rounded-full bg-[var(--card-bg)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all cursor-pointer"
                         type="button"
@@ -510,7 +541,10 @@ export const PostsPage = ({ initialAuthor }) => {
                         </span>
                       </div>
                       <button
-                        onClick={() => fetchUserPosts(targetUserId, currentPage + 1)}
+                        onClick={() => {
+                          setLoadingPosts(true);
+                          setCurrentPage((p) => p + 1);
+                        }}
                         disabled={!hasMorePosts}
                         className="px-3.5 py-1.5 rounded-full bg-[var(--card-bg)] text-[var(--primary)] text-xs font-medium border border-[var(--card-border)] shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all hover:bg-[var(--card-low)] cursor-pointer"
                         type="button"

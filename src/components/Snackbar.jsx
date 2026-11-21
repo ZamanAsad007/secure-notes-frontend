@@ -10,7 +10,7 @@ export const Snackbar = () => {
       dismissStatus();
     }, 4500);
     return () => clearTimeout(timer);
-  }, [statusMessage]);
+  }, [statusMessage, dismissStatus]);
 
   if (!statusMessage) return null;
 
@@ -35,7 +35,7 @@ export const Snackbar = () => {
       <span className="text-sm font-medium">{statusMessage.message}</span>
       <button
         onClick={dismissStatus}
-        className="ml-3 text-xs font-semibold uppercase tracking-wider text-[var(--primary)] hover:underline focus:outline-none"
+        className="ml-3 text-xs font-semibold uppercase tracking-wider text-[var(--primary)] hover:underline focus:outline-none cursor-pointer"
         type="button"
       >
         Dismiss

@@ -1,25 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 export const ProfilePage = () => {
   const { user, updateUser, isAdmin, showStatus } = useAuth();
 
-  const [name, setName] = useState('');
-  const [interests, setInterests] = useState([]);
+  const [name, setName] = useState(() => user?.name || '');
+  const [interests, setInterests] = useState(() => user?.interests || []);
   const [newInterest, setNewInterest] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Sync internal state if external user object changes
+  const [prevUser, setPrevUser] = useState(user);
+  if (user !== prevUser) {
+    setPrevUser(user);
+    setName(user?.name || '');
+    setInterests(user?.interests || []);
+  }
 
   // RBAC test states
   const [rbacTesting, setRbacTesting] = useState(false);
   const [rbacResult, setRbacResult] = useState(null);
-
-  useEffect(() => {
-    if (user) {
-      setName(user.name || '');
-      setInterests(user.interests || []);
-    }
-  }, [user]);
 
   const handleAddInterest = (e) => {
     e.preventDefault();
@@ -57,7 +58,8 @@ export const ProfilePage = () => {
           interests
         })
       });
-      updateUser(res.data);
+      const updatedUser = res?.data || res;
+      updateUser(updatedUser);
       showStatus('Profile updated successfully');
     } catch (err) {
       showStatus(err.message, true);
@@ -199,7 +201,7 @@ export const ProfilePage = () => {
                         <button
                           type="button"
                           onClick={() => handleRemoveInterest(tag)}
-                          className="text-[var(--text-muted)] hover:text-[var(--error)] transition-colors p-0.5 rounded-full"
+                          className="text-[var(--text-muted)] hover:text-[var(--error)] transition-colors p-0.5 rounded-full cursor-pointer"
                           title={`Remove ${tag}`}
                         >
                           <span className="material-symbols-outlined text-[14px]">close</span>
@@ -227,7 +229,7 @@ export const ProfilePage = () => {
                   <button
                     type="button"
                     onClick={handleAddInterest}
-                    className="h-10 px-4 rounded-lg bg-[var(--card-low)] hover:bg-[var(--card-border)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] transition-colors flex items-center gap-1"
+                    className="h-10 px-4 rounded-lg bg-[var(--card-low)] hover:bg-[var(--card-border)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <span className="material-symbols-outlined text-[16px]">add</span>
                     <span>Add</span>
@@ -240,7 +242,7 @@ export const ProfilePage = () => {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="h-11 px-6 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-sm font-medium flex items-center gap-2 shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
+                  className="h-11 px-6 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-sm font-medium flex items-center gap-2 shadow-sm hover:opacity-90 active:scale-95 transition-all disabled:opacity-50 cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[18px]">
                     {saving ? 'refresh' : 'save'}
@@ -281,7 +283,7 @@ export const ProfilePage = () => {
                 type="button"
                 onClick={handleTestRbac}
                 disabled={rbacTesting}
-                className="h-10 px-5 rounded-full bg-[var(--card-low)] hover:bg-[var(--card-border)] text-[var(--text-color)] text-xs font-semibold border border-[var(--card-border)] transition-all flex items-center gap-2 shadow-xs active:scale-95"
+                className="h-10 px-5 rounded-full bg-[var(--card-low)] hover:bg-[var(--card-border)] text-[var(--text-color)] text-xs font-semibold border border-[var(--card-border)] transition-all flex items-center gap-2 shadow-xs active:scale-95 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[16px]">
                   {rbacTesting ? 'refresh' : 'verified_user'}
