@@ -10,11 +10,52 @@ export const PostsPage = ({ initialAuthor }) => {
   const [postContent, setPostContent] = useState('');
   const [publishing, setPublishing] = useState(false);
 
+  // Initialize page and author from URL query params or sessionStorage
+  const [initialParams] = useState(() => {
+    let page = 1;
+    let author = initialAuthor?.id || initialAuthor?.name || '';
+
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlPage = parseInt(searchParams.get('page'), 10);
+      if (Number.isInteger(urlPage) && urlPage > 0) {
+        page = urlPage;
+      } else {
+        const savedPage = parseInt(sessionStorage.getItem('secure_notes_posts_page'), 10);
+        if (Number.isInteger(savedPage) && savedPage > 0) {
+          page = savedPage;
+        }
+      }
+
+      const urlAuthor = searchParams.get('author');
+      if (urlAuthor && urlAuthor.trim()) {
+        author = urlAuthor.trim();
+      } else if (!author) {
+        const savedAuthor = sessionStorage.getItem('secure_notes_posts_author');
+        if (savedAuthor && savedAuthor.trim()) {
+          author = savedAuthor.trim();
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return { page, author };
+  });
+
   // Browse Posts by User state (Scenario 2)
-  const [targetUserId, setTargetUserId] = useState(initialAuthor?.id || initialAuthor?.name || user?._id || '');
-  const [inputQuery, setInputQuery] = useState(initialAuthor?.name || initialAuthor?.id || user?.name || user?._id || '');
+  const [targetUserId, setTargetUserId] = useState(
+    initialParams.author || user?._id || ''
+  );
+  const [inputQuery, setInputQuery] = useState(
+    initialParams.author
+      ? initialParams.author === user?._id
+        ? (user?.name || user?._id || '')
+        : initialParams.author
+      : (user?.name || user?._id || '')
+  );
   const [postsData, setPostsData] = useState(null);
-  const [currentPage, setCurrentPage] = useState(1);
+  const [currentPage, setCurrentPage] = useState(initialParams.page);
   const [loadingPosts, setLoadingPosts] = useState(false);
   const [lookupError, setLookupError] = useState(null);
   const [refreshPostsKey, setRefreshPostsKey] = useState(0);
@@ -29,6 +70,63 @@ export const PostsPage = ({ initialAuthor }) => {
       setCurrentPage(1);
     }
   }
+
+  // Persist pagination and author filter in URL and sessionStorage across reloads
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (currentPage > 1) {
+        searchParams.set('page', String(currentPage));
+      } else {
+        searchParams.delete('page');
+      }
+
+      if (targetUserId && targetUserId !== user?._id) {
+        searchParams.set('author', targetUserId);
+      } else {
+        searchParams.delete('author');
+      }
+
+      const newSearch = searchParams.toString();
+      const newPath = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      const currentFull = window.location.pathname + window.location.search;
+
+      if (currentFull !== newPath) {
+        window.history.replaceState({ ...window.history.state, page: currentPage }, '', newPath);
+      }
+
+      sessionStorage.setItem('secure_notes_posts_page', String(currentPage));
+      if (targetUserId) {
+        sessionStorage.setItem('secure_notes_posts_author', targetUserId);
+      }
+    } catch {
+      // ignore
+    }
+  }, [currentPage, targetUserId, user?._id]);
+
+  // Sync state on browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlPage = parseInt(searchParams.get('page'), 10);
+        const newPage = Number.isInteger(urlPage) && urlPage > 0 ? urlPage : 1;
+        const urlAuthor = searchParams.get('author') || user?._id || '';
+
+        setCurrentPage(newPage);
+        setTargetUserId(urlAuthor);
+        if (urlAuthor === user?._id) {
+          setInputQuery(user?.name || user?._id || '');
+        } else {
+          setInputQuery(urlAuthor);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [user?._id, user?.name]);
 
   // Authors list for quick selection
   const [authors, setAuthors] = useState([]);
@@ -489,11 +587,22 @@ export const PostsPage = ({ initialAuthor }) => {
                     </div>
                     <div className="flex flex-col items-center gap-1">
                       <span className="font-semibold text-sm text-[var(--text-color)]">
-                        This user has no posts yet
+                        {currentPage > 1 ? 'No more posts on this page' : 'This user has no posts yet'}
                       </span>
                       <p className="text-xs text-[var(--text-muted)] max-w-sm">
-                        {currentAuthorName} has not published any public timeline records yet.
+                        {currentPage > 1
+                          ? `You are on page ${currentPage}. There are no further posts by ${currentAuthorName}.`
+                          : `${currentAuthorName} has not published any public timeline records yet.`}
                       </p>
+                      {currentPage > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setCurrentPage(1)}
+                          className="mt-2 px-4 py-1.5 rounded-full bg-[var(--primary)] text-[var(--primary-text)] text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer"
+                        >
+                          Back to Page 1
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (

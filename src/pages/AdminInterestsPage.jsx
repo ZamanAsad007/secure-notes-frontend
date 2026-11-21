@@ -5,12 +5,88 @@ import { useAuth } from '../context/AuthContext';
 export const AdminInterestsPage = ({ onNavigateToPosts }) => {
   const { showStatus } = useAuth();
 
+  // Initialize page and interest filter from URL query params or sessionStorage
+  const [initialParams] = useState(() => {
+    let page = 1;
+    let interest = '';
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlPage = parseInt(searchParams.get('page'), 10);
+      if (Number.isInteger(urlPage) && urlPage > 0) {
+        page = urlPage;
+      } else {
+        const savedPage = parseInt(sessionStorage.getItem('secure_notes_interests_page'), 10);
+        if (Number.isInteger(savedPage) && savedPage > 0) {
+          page = savedPage;
+        }
+      }
+
+      const urlInterest = searchParams.get('interest');
+      if (urlInterest && urlInterest.trim()) {
+        interest = urlInterest.trim();
+      }
+    } catch {
+      // ignore
+    }
+    return { page, interest };
+  });
+
   const [interestGroups, setInterestGroups] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 6, total: 0, totalPages: 1 });
-  const [filterQuery, setFilterQuery] = useState('');
-  const [appliedFilter, setAppliedFilter] = useState('');
+  const [pagination, setPagination] = useState({ page: initialParams.page, limit: 6, total: 0, totalPages: 1 });
+  const [filterQuery, setFilterQuery] = useState(initialParams.interest);
+  const [appliedFilter, setAppliedFilter] = useState(initialParams.interest);
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Sync URL search params and sessionStorage when page or applied filter changes
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (pagination.page > 1) {
+        searchParams.set('page', String(pagination.page));
+      } else {
+        searchParams.delete('page');
+      }
+
+      if (appliedFilter.trim()) {
+        searchParams.set('interest', appliedFilter.trim());
+      } else {
+        searchParams.delete('interest');
+      }
+
+      const newSearch = searchParams.toString();
+      const newPath = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      const currentFull = window.location.pathname + window.location.search;
+
+      if (currentFull !== newPath) {
+        window.history.replaceState({ ...window.history.state, page: pagination.page }, '', newPath);
+      }
+
+      sessionStorage.setItem('secure_notes_interests_page', String(pagination.page));
+    } catch {
+      // ignore
+    }
+  }, [pagination.page, appliedFilter]);
+
+  // Sync state on browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlPage = parseInt(searchParams.get('page'), 10);
+        const newPage = Number.isInteger(urlPage) && urlPage > 0 ? urlPage : 1;
+        const newInterest = searchParams.get('interest') || '';
+
+        setPagination((prev) => (prev.page === newPage ? prev : { ...prev, page: newPage }));
+        setAppliedFilter(newInterest);
+        setFilterQuery(newInterest);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   const refetch = useCallback(() => {
     setLoading(true);

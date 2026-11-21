@@ -109,13 +109,14 @@ const AppContent = () => {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Sync URL bar and storage once auth is verified (DO NOT wipe URL during loading!)
+  // Sync URL bar and storage once auth is verified (DO NOT wipe URL or search params during loading!)
   useEffect(() => {
     if (loading || !user) return;
 
-    const targetPath = activeTab === 'notes' ? '/' : `/${activeTab}`;
-    if (window.location.pathname !== targetPath) {
-      window.history.replaceState({ tab: activeTab }, '', targetPath);
+    const currentSearch = window.location.search;
+    const expectedPath = activeTab === 'notes' ? '/' : `/${activeTab}`;
+    if (window.location.pathname !== expectedPath) {
+      window.history.replaceState({ tab: activeTab }, '', expectedPath + currentSearch);
     }
     try {
       localStorage.setItem('secure_notes_current_tab', activeTab);

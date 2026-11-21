@@ -5,11 +5,44 @@ import { useAuth } from '../context/AuthContext';
 export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
   const { showStatus } = useAuth();
 
+  // Read initial page and owner filter from URL or sessionStorage
+  const [initialParams] = useState(() => {
+    let page = 1;
+    let owner = '';
+
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlPage = parseInt(searchParams.get('page'), 10);
+      if (Number.isInteger(urlPage) && urlPage > 0) {
+        page = urlPage;
+      } else {
+        const savedPage = parseInt(sessionStorage.getItem('secure_notes_all_notes_page'), 10);
+        if (Number.isInteger(savedPage) && savedPage > 0) {
+          page = savedPage;
+        }
+      }
+
+      const urlOwner = searchParams.get('owner');
+      if (urlOwner && urlOwner.trim()) {
+        owner = urlOwner.trim();
+      } else {
+        const savedOwner = sessionStorage.getItem('secure_notes_all_notes_owner');
+        if (savedOwner && savedOwner.trim()) {
+          owner = savedOwner.trim();
+        }
+      }
+    } catch {
+      // ignore
+    }
+
+    return { page, owner };
+  });
+
   const [notes, setNotes] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 9, total: 0, totalPages: 1 });
-  const [ownerFilter, setOwnerFilter] = useState('');
-  const [inputOwner, setInputOwner] = useState('');
+  const [pagination, setPagination] = useState({ page: initialParams.page, limit: 9, total: 0, totalPages: 1 });
+  const [ownerFilter, setOwnerFilter] = useState(initialParams.owner);
+  const [inputOwner, setInputOwner] = useState(initialParams.owner);
   const [refreshKey, setRefreshKey] = useState(0);
 
   // Inspection modal
@@ -18,6 +51,57 @@ export const AdminAllNotesPage = ({ onNavigateToPosts }) => {
   const refetch = useCallback(() => {
     setLoading(true);
     setRefreshKey((k) => k + 1);
+  }, []);
+
+  // Sync URL search params and sessionStorage when pagination or filter changes
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (pagination.page > 1) {
+        searchParams.set('page', String(pagination.page));
+      } else {
+        searchParams.delete('page');
+      }
+
+      if (ownerFilter.trim()) {
+        searchParams.set('owner', ownerFilter.trim());
+      } else {
+        searchParams.delete('owner');
+      }
+
+      const newSearch = searchParams.toString();
+      const newPath = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      const currentFull = window.location.pathname + window.location.search;
+
+      if (currentFull !== newPath) {
+        window.history.replaceState({ ...window.history.state, page: pagination.page }, '', newPath);
+      }
+
+      sessionStorage.setItem('secure_notes_all_notes_page', String(pagination.page));
+      sessionStorage.setItem('secure_notes_all_notes_owner', ownerFilter.trim());
+    } catch {
+      // ignore
+    }
+  }, [pagination.page, ownerFilter]);
+
+  // Sync state on browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlPage = parseInt(searchParams.get('page'), 10);
+        const newPage = Number.isInteger(urlPage) && urlPage > 0 ? urlPage : 1;
+        const newOwner = searchParams.get('owner') || '';
+
+        setPagination((prev) => (prev.page === newPage ? prev : { ...prev, page: newPage }));
+        setOwnerFilter(newOwner);
+        setInputOwner(newOwner);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
   useEffect(() => {

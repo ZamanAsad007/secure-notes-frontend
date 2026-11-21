@@ -5,12 +5,87 @@ import { useAuth } from '../context/AuthContext';
 export const AdminUsersPage = ({ onNavigateToPosts }) => {
   const { user: currentUser, updateUser, showStatus } = useAuth();
 
+  // Initialize page and role filter from URL query params or sessionStorage
+  const [initialParams] = useState(() => {
+    let page = 1;
+    let role = '';
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlPage = parseInt(searchParams.get('page'), 10);
+      if (Number.isInteger(urlPage) && urlPage > 0) {
+        page = urlPage;
+      } else {
+        const savedPage = parseInt(sessionStorage.getItem('secure_notes_users_page'), 10);
+        if (Number.isInteger(savedPage) && savedPage > 0) {
+          page = savedPage;
+        }
+      }
+
+      const urlRole = searchParams.get('role');
+      if (urlRole && ['admin', 'user'].includes(urlRole)) {
+        role = urlRole;
+      }
+    } catch {
+      // ignore
+    }
+    return { page, role };
+  });
+
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, totalPages: 1 });
-  const [roleFilter, setRoleFilter] = useState('');
+  const [pagination, setPagination] = useState({ page: initialParams.page, limit: 10, total: 0, totalPages: 1 });
+  const [roleFilter, setRoleFilter] = useState(initialParams.role);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Sync URL search params and sessionStorage when page or role filter changes
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (pagination.page > 1) {
+        searchParams.set('page', String(pagination.page));
+      } else {
+        searchParams.delete('page');
+      }
+
+      if (roleFilter) {
+        searchParams.set('role', roleFilter);
+      } else {
+        searchParams.delete('role');
+      }
+
+      const newSearch = searchParams.toString();
+      const newPath = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      const currentFull = window.location.pathname + window.location.search;
+
+      if (currentFull !== newPath) {
+        window.history.replaceState({ ...window.history.state, page: pagination.page }, '', newPath);
+      }
+
+      sessionStorage.setItem('secure_notes_users_page', String(pagination.page));
+    } catch {
+      // ignore
+    }
+  }, [pagination.page, roleFilter]);
+
+  // Sync state on browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlPage = parseInt(searchParams.get('page'), 10);
+        const newPage = Number.isInteger(urlPage) && urlPage > 0 ? urlPage : 1;
+        const newRole = searchParams.get('role') || '';
+
+        setPagination((prev) => (prev.page === newPage ? prev : { ...prev, page: newPage }));
+        setRoleFilter(newRole);
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Modals state
   const [addModalOpen, setAddModalOpen] = useState(false);

@@ -5,11 +5,69 @@ import { useAuth } from '../context/AuthContext';
 export const NotesPage = () => {
   const { user, showStatus } = useAuth();
 
+  // Initialize page from URL query params or sessionStorage
+  const [initialPage] = useState(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const urlPage = parseInt(searchParams.get('page'), 10);
+      if (Number.isInteger(urlPage) && urlPage > 0) {
+        return urlPage;
+      }
+      const savedPage = parseInt(sessionStorage.getItem('secure_notes_notes_page'), 10);
+      if (Number.isInteger(savedPage) && savedPage > 0) {
+        return savedPage;
+      }
+    } catch {
+      // ignore
+    }
+    return 1;
+  });
+
   const [notes, setNotes] = useState([]);
-  const [pagination, setPagination] = useState({ page: 1, limit: 9, total: 0, totalPages: 1 });
+  const [pagination, setPagination] = useState({ page: initialPage, limit: 9, total: 0, totalPages: 1 });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+
+  // Sync URL search params and sessionStorage when page changes
+  useEffect(() => {
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      if (pagination.page > 1) {
+        searchParams.set('page', String(pagination.page));
+      } else {
+        searchParams.delete('page');
+      }
+
+      const newSearch = searchParams.toString();
+      const newPath = window.location.pathname + (newSearch ? `?${newSearch}` : '');
+      const currentFull = window.location.pathname + window.location.search;
+
+      if (currentFull !== newPath) {
+        window.history.replaceState({ ...window.history.state, page: pagination.page }, '', newPath);
+      }
+
+      sessionStorage.setItem('secure_notes_notes_page', String(pagination.page));
+    } catch {
+      // ignore
+    }
+  }, [pagination.page]);
+
+  // Sync state on browser back/forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const urlPage = parseInt(searchParams.get('page'), 10);
+        const newPage = Number.isInteger(urlPage) && urlPage > 0 ? urlPage : 1;
+        setPagination((prev) => (prev.page === newPage ? prev : { ...prev, page: newPage }));
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   // Dialog states
   const [dialogOpen, setDialogOpen] = useState(false);
