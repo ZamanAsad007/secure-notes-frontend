@@ -1,0 +1,61 @@
+@import "tailwindcss";
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    font-family: 'Roboto Flex', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+}
+
+:root {
+  --bg-color: #faf9fd;
+  --text-color: #1a1b1e;
+  --text-muted: #414754;
+  --card-bg: #ffffff;
+  --card-low: #f4f3f7;
+  --card-border: #e3e2e6;
+  --primary: #005bbf;
+  --primary-hover: #1a73e8;
+  --primary-text: #ffffff;
+  --primary-light: #d8e2ff;
+  --primary-light-text: #004493;
+  --tertiary: #006d2b;
+  --tertiary-light: #7adb87;
+  --error: #ba1a1a;
+  --error-bg: #ffdad6;
+  --error-text: #93000a;
+  --header-bg: #ffffff;
+  --header-border: #efedf1;
+  --tag-bg: #dde0e6;
+  --tag-text: #43474c;
+}
+
+.dark {
+  --bg-color: #121212;
+  --text-color: #e8eaed;
+  --text-muted: #9aa0a6;
+  --card-bg: #1e1e1e;
+  --card-low: #28292a;
+  --card-border: #3c4043;
+  --primary: #8ab4f8;
+  --primary-hover: #adc7ff;
+  --primary-text: #00325b;
+  --primary-light: #28292a;
+  --primary-light-text: #8ab4f8;
+  --tertiary: #81c995;
+  --tertiary-light: #3a4c3e;
+  --error: #f28b82;
+  --error-bg: #3c2020;
+  --error-text: #f28b82;
+  --header-bg: #1f1f1f;
+  --header-border: #3c4043;
+  --tag-bg: #2d2f31;
+  --tag-text: #8ab4f8;
+}
+
+body {
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  min-height: 100vh;
+}
