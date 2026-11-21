@@ -3,9 +3,9 @@
 A modern, responsive Single Page Application (SPA) designed to Google Stitch Material Design 3 specifications. Built with React 19, Vite, and Tailwind CSS v4, supporting dynamic Light and Dark mode theming, owner-scoped note management, public feed publishing, and administrative consoles.
 
 - **GitHub Repository**: [https://github.com/ZamanAsad007/secure-notes-frontend](https://github.com/ZamanAsad007/secure-notes-frontend)
-- **Live Frontend Application**: `https://YOUR-APP.vercel.app` (Vercel)
+- **Live Frontend Application**: [https://secure-notes-frontend-omega.vercel.app](https://secure-notes-frontend-omega.vercel.app) (Vercel)
 - **Backend API Repository**: [https://github.com/ZamanAsad007/secure-notes-backend](https://github.com/ZamanAsad007/secure-notes-backend)
-- **Live Backend API**: [https://secure-notes-backend-d423.onrender.com](https://secure-notes-backend-d423.onrender.com) (Render Web Service)
+- **Live Backend API**: [https://secure-notes-backend.onrender.com](https://secure-notes-backend.onrender.com) (Render Web Service)
 
 ---
 
@@ -36,7 +36,7 @@ A modern, responsive Single Page Application (SPA) designed to Google Stitch Mat
 Create a `.env` file in the frontend root:
 
 ```env
-VITE_API_URL=https://secure-notes-backend-d423.onrender.com/api
+VITE_API_URL=https://secure-notes-backend.onrender.com/api
 ```
 
 | Variable | Required | Default | Description |
