@@ -19,18 +19,16 @@ export const PostsPage = ({ initialAuthor }) => {
   const [lookupError, setLookupError] = useState(null);
   const [refreshPostsKey, setRefreshPostsKey] = useState(0);
 
-  // Sync internal targetUserId if initialAuthor changes or when user becomes available
-  useEffect(() => {
+  // Sync internal targetUserId if initialAuthor changes
+  const [prevAuthor, setPrevAuthor] = useState(initialAuthor);
+  if (initialAuthor !== prevAuthor) {
+    setPrevAuthor(initialAuthor);
     if (initialAuthor?.id) {
       setTargetUserId(initialAuthor.id);
       setInputQuery(initialAuthor.name || initialAuthor.id);
       setCurrentPage(1);
-    } else if (user?._id && !targetUserId) {
-      setTargetUserId(user._id);
-      setInputQuery(user?.name || user?._id || '');
-      setCurrentPage(1);
     }
-  }, [initialAuthor, user?._id, user?.name, targetUserId]);
+  }
 
   // Authors list for quick selection
   const [authors, setAuthors] = useState([]);
@@ -68,6 +66,7 @@ export const PostsPage = ({ initialAuthor }) => {
 
   // Load posts for target user (by ObjectId, email, or name)
   const refetchPosts = useCallback(() => {
+    setLoadingPosts(true);
     setRefreshPostsKey((k) => k + 1);
   }, []);
 
@@ -77,14 +76,12 @@ export const PostsPage = ({ initialAuthor }) => {
     }
 
     let active = true;
-    setLoadingPosts(true);
-    setLookupError(null);
-
     (async () => {
       try {
         const res = await api(`/api/users/${encodeURIComponent(targetUserId)}/posts?page=${currentPage}&limit=5`);
         if (active) {
           setPostsData(res);
+          setLookupError(null);
         }
       } catch (err) {
         if (active) {
@@ -212,10 +209,12 @@ export const PostsPage = ({ initialAuthor }) => {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[var(--tertiary)] opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-[var(--tertiary)]"></span>
                 </span>
-                <span className="text-xs text-[var(--text-muted)] font-medium">Live Sync Active</span>
+                <span className="text-xs text-[var(--text-muted)] font-medium">Community Feed</span>
               </div>
               <div className="w-px h-4 bg-[var(--card-border)]"></div>
-              <span className="text-xs text-[var(--primary)] font-semibold">Feed Node #84</span>
+              <span className="text-xs text-[var(--primary)] font-semibold">
+                {authors.length} {authors.length === 1 ? 'Author' : 'Authors'}
+              </span>
             </div>
           </div>
 
@@ -301,25 +300,42 @@ export const PostsPage = ({ initialAuthor }) => {
                 </form>
               </section>
 
-              {/* Contextual Quick Stats & Encryption Insight */}
-              <div className="bg-[var(--card-low)] rounded-xl p-5 border border-[var(--card-border)] flex flex-col gap-3">
+              {/* Community Overview & Publishing Guidelines */}
+              <div className="bg-[var(--card-low)] rounded-xl p-5 border border-[var(--card-border)] flex flex-col gap-3.5">
                 <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-[var(--text-color)]">Community Telemetry</span>
-                  <span className="material-symbols-outlined text-[var(--text-muted)] text-[20px]">insights</span>
+                  <span className="text-sm font-semibold text-[var(--text-color)] flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-[var(--primary)]">tips_and_updates</span>
+                    Community Overview
+                  </span>
+                  <span className="text-[11px] font-medium text-[var(--text-muted)] bg-[var(--card-bg)] px-2 py-0.5 rounded border border-[var(--card-border)]">
+                    Public Feed
+                  </span>
                 </div>
-                <div className="grid grid-cols-2 gap-3 pt-1">
-                  <div className="bg-[var(--card-bg)] p-3.5 rounded-lg border border-[var(--card-border)] flex flex-col">
-                    <span className="text-xs text-[var(--text-muted)]">Active Protocol</span>
-                    <span className="text-base font-semibold text-[var(--text-color)] mt-1">Scenario 2</span>
+
+                <div className="grid grid-cols-2 gap-3 pt-0.5">
+                  <div className="bg-[var(--card-bg)] p-3.5 rounded-lg border border-[var(--card-border)] flex flex-col shadow-2xs">
+                    <span className="text-xs text-[var(--text-muted)]">Active Authors</span>
+                    <span className="text-lg font-bold text-[var(--text-color)] mt-0.5">
+                      {authors.length}
+                    </span>
                   </div>
-                  <div className="bg-[var(--card-bg)] p-3.5 rounded-lg border border-[var(--card-border)] flex flex-col">
-                    <span className="text-xs text-[var(--text-muted)]">Index Optimization</span>
-                    <span className="text-base font-semibold text-[var(--text-color)] mt-1">author_1__id_-1</span>
+                  <div className="bg-[var(--card-bg)] p-3.5 rounded-lg border border-[var(--card-border)] flex flex-col shadow-2xs">
+                    <span className="text-xs text-[var(--text-muted)]">Your Posts</span>
+                    <span className="text-lg font-bold text-[var(--primary)] mt-0.5">
+                      {authors.find((a) => a._id === user?._id)?.postCount ?? 0}
+                    </span>
                   </div>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] pt-1">
-                  <span className="material-symbols-outlined text-[14px] text-[var(--tertiary)]">check_circle</span>
-                  <span>Single-pipeline $lookup with limit+1 cursor pagination</span>
+
+                <div className="flex flex-col gap-2 pt-1 border-t border-[var(--card-border)]/60 text-xs text-[var(--text-muted)]">
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[15px] text-[var(--tertiary)] shrink-0 mt-0.5">public</span>
+                    <span>Posts are shared publicly across the workspace community.</span>
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="material-symbols-outlined text-[15px] text-[var(--primary)] shrink-0 mt-0.5">lock</span>
+                    <span>Store confidential keys and private drafts in your <strong>My Notes</strong> vault.</span>
+                  </div>
                 </div>
               </div>
             </div>
