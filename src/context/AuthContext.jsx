@@ -90,6 +90,12 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(() => {
     clearToken();
+    try {
+      localStorage.removeItem('secure_notes_current_tab');
+      sessionStorage.removeItem('secure_notes_current_tab');
+    } catch {
+      // ignore
+    }
     setUser(null);
     showStatus('Logged out successfully.');
   }, [showStatus]);

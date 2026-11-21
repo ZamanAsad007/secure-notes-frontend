@@ -13,51 +13,62 @@ import { AdminInterestsPage } from './pages/AdminInterestsPage';
 const VALID_TABS = ['notes', 'posts', 'profile', 'all-notes', 'users', 'interests'];
 const ADMIN_ONLY_TABS = ['all-notes', 'users', 'interests'];
 
-const getTabFromLocation = (isAdmin = true) => {
+/**
+ * Resolves the active tab from:
+ * 1. URL Pathname (e.g. '/posts', '/users')
+ * 2. URL Hash (e.g. '#posts')
+ * 3. URL Query Param (e.g. '?tab=posts')
+ * 4. Stored tab in localStorage / sessionStorage
+ * Defaults to 'notes'.
+ */
+const resolveTabFromLocation = () => {
   if (typeof window === 'undefined') return 'notes';
-
-  let candidate = 'notes';
 
   // 1. Pathname check (e.g. '/posts', '/all-notes')
   const path = window.location.pathname.replace(/^\/+|\/+$/g, '');
   if (VALID_TABS.includes(path)) {
-    candidate = path;
-  } else {
-    // 2. Hash check (e.g. '#posts')
-    const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
-    if (VALID_TABS.includes(hash)) {
-      candidate = hash;
-    } else {
-      // 3. Query param check (e.g. '?tab=posts')
-      const params = new URLSearchParams(window.location.search);
-      const tabParam = params.get('tab');
-      if (VALID_TABS.includes(tabParam)) {
-        candidate = tabParam;
-      } else {
-        // 4. Session storage fallback
-        try {
-          const stored = sessionStorage.getItem('secure_notes_current_tab');
-          if (VALID_TABS.includes(stored)) {
-            candidate = stored;
-          }
-        } catch {
-          // ignore
-        }
-      }
+    return path;
+  }
+
+  // 2. Hash check (e.g. '#posts')
+  const hash = window.location.hash.replace(/^#\/?/, '').split('?')[0];
+  if (VALID_TABS.includes(hash)) {
+    return hash;
+  }
+
+  // 3. Query param check (e.g. '?tab=posts')
+  const params = new URLSearchParams(window.location.search);
+  const tabParam = params.get('tab');
+  if (VALID_TABS.includes(tabParam)) {
+    return tabParam;
+  }
+
+  // 4. Stored tab from localStorage or sessionStorage
+  try {
+    const stored =
+      localStorage.getItem('secure_notes_current_tab') ||
+      sessionStorage.getItem('secure_notes_current_tab');
+    if (VALID_TABS.includes(stored)) {
+      return stored;
     }
+  } catch {
+    // ignore
   }
 
-  if (!isAdmin && ADMIN_ONLY_TABS.includes(candidate)) {
-    return 'notes';
-  }
-
-  return candidate;
+  return 'notes';
 };
 
 const AppContent = () => {
   const { user, loading, isAdmin } = useAuth();
-  const [currentTab, setCurrentTab] = useState(() => getTabFromLocation(isAdmin));
+
+  // Initialize from location without discarding admin tabs prematurely while auth is loading
+  const [currentTab, setCurrentTab] = useState(() => resolveTabFromLocation());
   const [selectedPostAuthor, setSelectedPostAuthor] = useState(null);
+
+  // Compute active tab ensuring RBAC security once role is known
+  const activeTab = !loading && !isAdmin && ADMIN_ONLY_TABS.includes(currentTab)
+    ? 'notes'
+    : currentTab;
 
   const navigateToTab = (tab, replace = false) => {
     let target = tab;
@@ -66,6 +77,7 @@ const AppContent = () => {
     }
     setCurrentTab(target);
     try {
+      localStorage.setItem('secure_notes_current_tab', target);
       sessionStorage.setItem('secure_notes_current_tab', target);
     } catch {
       // ignore
@@ -84,9 +96,10 @@ const AppContent = () => {
   // Sync state on browser Back / Forward navigation
   useEffect(() => {
     const handlePopState = () => {
-      const tab = getTabFromLocation(isAdmin);
+      const tab = resolveTabFromLocation();
       setCurrentTab(tab);
       try {
+        localStorage.setItem('secure_notes_current_tab', tab);
         sessionStorage.setItem('secure_notes_current_tab', tab);
       } catch {
         // ignore
@@ -94,17 +107,23 @@ const AppContent = () => {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isAdmin]);
+  }, []);
 
-  const activeTab = !isAdmin && ADMIN_ONLY_TABS.includes(currentTab) ? 'notes' : currentTab;
-
-  // Sync URL bar on mount or tab change
+  // Sync URL bar and storage once auth is verified (DO NOT wipe URL during loading!)
   useEffect(() => {
+    if (loading || !user) return;
+
     const targetPath = activeTab === 'notes' ? '/' : `/${activeTab}`;
     if (window.location.pathname !== targetPath) {
       window.history.replaceState({ tab: activeTab }, '', targetPath);
     }
-  }, [activeTab]);
+    try {
+      localStorage.setItem('secure_notes_current_tab', activeTab);
+      sessionStorage.setItem('secure_notes_current_tab', activeTab);
+    } catch {
+      // ignore
+    }
+  }, [loading, user, activeTab]);
 
   const handleNavigateToPosts = (userId, userName) => {
     setSelectedPostAuthor({ id: userId, name: userName });
