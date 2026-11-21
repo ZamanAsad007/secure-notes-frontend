@@ -19,16 +19,18 @@ export const PostsPage = ({ initialAuthor }) => {
   const [lookupError, setLookupError] = useState(null);
   const [refreshPostsKey, setRefreshPostsKey] = useState(0);
 
-  // Sync internal targetUserId if initialAuthor changes
-  const [prevAuthor, setPrevAuthor] = useState(initialAuthor);
-  if (initialAuthor !== prevAuthor) {
-    setPrevAuthor(initialAuthor);
+  // Sync internal targetUserId if initialAuthor changes or when user becomes available
+  useEffect(() => {
     if (initialAuthor?.id) {
       setTargetUserId(initialAuthor.id);
       setInputQuery(initialAuthor.name || initialAuthor.id);
       setCurrentPage(1);
+    } else if (user?._id && !targetUserId) {
+      setTargetUserId(user._id);
+      setInputQuery(user?.name || user?._id || '');
+      setCurrentPage(1);
     }
-  }
+  }, [initialAuthor, user?._id, user?.name, targetUserId]);
 
   // Authors list for quick selection
   const [authors, setAuthors] = useState([]);
@@ -66,16 +68,19 @@ export const PostsPage = ({ initialAuthor }) => {
 
   // Load posts for target user (by ObjectId, email, or name)
   const refetchPosts = useCallback(() => {
-    setLoadingPosts(true);
     setRefreshPostsKey((k) => k + 1);
   }, []);
 
   useEffect(() => {
-    if (!targetUserId) return;
+    if (!targetUserId) {
+      return;
+    }
 
     let active = true;
+    setLoadingPosts(true);
+    setLookupError(null);
+
     (async () => {
-      setLookupError(null);
       try {
         const res = await api(`/api/users/${encodeURIComponent(targetUserId)}/posts?page=${currentPage}&limit=5`);
         if (active) {
@@ -87,7 +92,9 @@ export const PostsPage = ({ initialAuthor }) => {
           setPostsData(null);
         }
       } finally {
-        if (active) setLoadingPosts(false);
+        if (active) {
+          setLoadingPosts(false);
+        }
       }
     })();
 
@@ -96,6 +103,17 @@ export const PostsPage = ({ initialAuthor }) => {
     };
   }, [targetUserId, currentPage, refreshPostsKey]);
 
+  const handleSelectMyPosts = () => {
+    if (!user?._id) return;
+    setInputQuery(user.name || user._id);
+    setCurrentPage(1);
+    if (targetUserId === user._id && currentPage === 1) {
+      setRefreshPostsKey((k) => k + 1);
+    } else {
+      setTargetUserId(user._id);
+    }
+  };
+
   const handleSearchSubmit = (e) => {
     e.preventDefault();
     const query = inputQuery.trim();
@@ -103,17 +121,22 @@ export const PostsPage = ({ initialAuthor }) => {
       showStatus('Please enter an author name, email, or user ID', true);
       return;
     }
-    setLoadingPosts(true);
-    setTargetUserId(query);
     setCurrentPage(1);
-    refetchPosts();
+    if (targetUserId === query && currentPage === 1) {
+      setRefreshPostsKey((k) => k + 1);
+    } else {
+      setTargetUserId(query);
+    }
   };
 
   const selectAuthor = (author) => {
     setInputQuery(author.name || author._id);
-    setLoadingPosts(true);
-    setTargetUserId(author._id);
     setCurrentPage(1);
+    if (targetUserId === author._id && currentPage === 1) {
+      setRefreshPostsKey((k) => k + 1);
+    } else {
+      setTargetUserId(author._id);
+    }
   };
 
   const handlePublish = async (e) => {
@@ -137,6 +160,11 @@ export const PostsPage = ({ initialAuthor }) => {
       setPostContent('');
 
       // Refresh authors list and active author feed
+      if (user?._id) {
+        setTargetUserId(user._id);
+        setInputQuery(user.name || user._id);
+        setCurrentPage(1);
+      }
       refetchPosts();
       try {
         const authorsRes = await api('/api/posts/authors');
@@ -315,13 +343,12 @@ export const PostsPage = ({ initialAuthor }) => {
 
                   {user?._id && (
                     <button
-                      onClick={() => {
-                        setInputQuery(user.name || user._id);
-                        setLoadingPosts(true);
-                        setTargetUserId(user._id);
-                        setCurrentPage(1);
-                      }}
-                      className="px-3.5 py-1.5 rounded-full text-xs font-semibold bg-[var(--primary-light)] text-[var(--primary-light-text)] hover:opacity-90 transition-all self-start cursor-pointer flex items-center gap-1"
+                      onClick={handleSelectMyPosts}
+                      className={`px-3.5 py-1.5 rounded-full text-xs font-semibold transition-all self-start cursor-pointer flex items-center gap-1 ${
+                        targetUserId === user._id
+                          ? 'bg-[var(--primary)] text-[var(--primary-text)] shadow-sm'
+                          : 'bg-[var(--primary-light)] text-[var(--primary-light-text)] hover:opacity-90'
+                      }`}
                       type="button"
                     >
                       <span className="material-symbols-outlined text-[14px]">person</span>
@@ -523,11 +550,8 @@ export const PostsPage = ({ initialAuthor }) => {
                     {/* Scenario 2 Pagination */}
                     <div className="flex items-center justify-between pt-2 bg-[var(--card-low)] px-4 py-2.5 rounded-xl border border-[var(--card-border)]">
                       <button
-                        onClick={() => {
-                          setLoadingPosts(true);
-                          setCurrentPage((p) => p - 1);
-                        }}
-                        disabled={currentPage <= 1}
+                        onClick={() => setCurrentPage((p) => p - 1)}
+                        disabled={currentPage <= 1 || loadingPosts}
                         className="px-3.5 py-1.5 rounded-full bg-[var(--card-bg)] text-[var(--text-color)] text-xs font-medium border border-[var(--card-border)] shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all cursor-pointer"
                         type="button"
                       >
@@ -541,11 +565,8 @@ export const PostsPage = ({ initialAuthor }) => {
                         </span>
                       </div>
                       <button
-                        onClick={() => {
-                          setLoadingPosts(true);
-                          setCurrentPage((p) => p + 1);
-                        }}
-                        disabled={!hasMorePosts}
+                        onClick={() => setCurrentPage((p) => p + 1)}
+                        disabled={!hasMorePosts || loadingPosts}
                         className="px-3.5 py-1.5 rounded-full bg-[var(--card-bg)] text-[var(--primary)] text-xs font-medium border border-[var(--card-border)] shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1 transition-all hover:bg-[var(--card-low)] cursor-pointer"
                         type="button"
                       >
